@@ -17,7 +17,7 @@ import cv2
 
 HERE = Path(__file__).parent
 MODEL_PATH = HERE / "Skull_31_10_69.pt"
-VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".wmv"}
+VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".wmv", ".3gp", ".mts"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
 
@@ -51,12 +51,20 @@ def iter_video(path, fps):
     cap.release()
 
 
-def iter_images(folder):
+def iter_images(folder, fps=1.0):
+    """Images AND videos inside a folder (or an extracted zip)."""
     files = sorted(p for p in Path(folder).rglob("*") if p.suffix.lower() in IMAGE_EXT)
+    videos = sorted(p for p in Path(folder).rglob("*") if p.suffix.lower() in VIDEO_EXT)
+    if videos:
+        print(f"  found {len(files)} images + {len(videos)} videos: " + ", ".join(v.name for v in videos))
     for p in files:
         img = cv2.imread(str(p))
         if img is not None:
             yield p.stem, img, len(files)
+    for v in videos:
+        vstem = "".join(c if c.isalnum() or c in "-_" else "_" for c in v.stem)
+        for name, frame, total in iter_video(v, fps):
+            yield f"{vstem}_{name}", frame, total
 
 
 def process(src: Path, model, args):
@@ -64,11 +72,11 @@ def process(src: Path, model, args):
     out_zip = src.parent / f"{stem}_prelabel.zip"
     tmp = None
     if src.is_dir():
-        frames = iter_images(src)
+        frames = iter_images(src, args.fps)
     elif src.suffix.lower() == ".zip":
         tmp = tempfile.TemporaryDirectory()
         zipfile.ZipFile(src).extractall(tmp.name)
-        frames = iter_images(tmp.name)
+        frames = iter_images(tmp.name, args.fps)
     elif src.suffix.lower() in VIDEO_EXT:
         frames = iter_video(src, args.fps)
     else:
